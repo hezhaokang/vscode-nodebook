@@ -30,8 +30,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
 RUN pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 5. 安装 code-server
-COPY code-server_4.102.2_amd64.deb /tmp/
-RUN dpkg -i /tmp/code-server_4.102.2_amd64.deb && \
+RUN curl -fsSL https://github.com/coder/code-server/releases/download/v4.102.2/code-server_4.102.2_amd64.deb -o /tmp/code-server_4.102.2_amd64.deb && \
+    dpkg -i /tmp/code-server_4.102.2_amd64.deb && \
     apt-get install -f -y && \
     rm -f /tmp/code-server_4.102.2_amd64.deb
 

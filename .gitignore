@@ -1,0 +1,16 @@
+# 大文件
+*.deb
+*.tar.gz
+*.zip
+*.tar
+*.exe
+*.msi
+
+# 系统文件
+.DS_Store
+Thumbs.db
+.vscode/
+
+# 临时文件
+*.tmp
+*.log

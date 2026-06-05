@@ -1,55 +1,74 @@
-# 基础镜像
+# syntax=docker/dockerfile:1
+
 FROM ubuntu:22.04
 
-ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Asia/Shanghai \
+    PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+    NODE_MAJOR=20 \
+    CODE_SERVER_VERSION=4.102.2
 
-# 1. 使用阿里云 apt 源
-RUN cp /etc/apt/sources.list /etc/apt/sources.list.bak && \
-    sed -i 's@http://archive.ubuntu.com@http://mirrors.aliyun.com@g' /etc/apt/sources.list && \
-    sed -i 's@http://security.ubuntu.com@http://mirrors.aliyun.com@g' /etc/apt/sources.list
-
-# 2. 安装基础依赖并清理缓存
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    wget \
-    git \
-    vim \
-    python3 \
-    python3-pip \
-    python3-venv \
-    tini \
-    && rm -rf /var/lib/apt/lists/*
-
-# 3. 安装 Node.js 20
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get update && apt-get install -y --no-install-recommends nodejs && \
+# 使用国内源 + 安装依赖
+RUN sed -i 's@archive.ubuntu.com@mirrors.aliyun.com@g' /etc/apt/sources.list && \
+    sed -i 's@security.ubuntu.com@mirrors.aliyun.com@g' /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        wget \
+        ca-certificates \
+        git \
+        vim \
+        tini \
+        python3 \
+        python3-pip \
+        python3-venv \
+        gnupg && \
     rm -rf /var/lib/apt/lists/*
 
-# 4. pip 使用清华源
-RUN pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+# 安装 Node.js（国内镜像）
+RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends nodejs && \
+    npm config set registry https://registry.npmmirror.com && \
+    rm -rf /var/lib/apt/lists/*
 
-# 5. 安装 code-server
-RUN curl -fsSL https://github.com/coder/code-server/releases/download/v4.102.2/code-server_4.102.2_amd64.deb -o /tmp/code-server_4.102.2_amd64.deb && \
-    dpkg -i /tmp/code-server_4.102.2_amd64.deb && \
-    apt-get install -f -y && \
-    rm -f /tmp/code-server_4.102.2_amd64.deb
+# pip 配置
+RUN mkdir -p /root/.pip && \
+    echo "[global]\nindex-url=${PIP_INDEX_URL}" > /root/.pip/pip.conf
 
-# 6. 安装 Jupyter Lab 和 Notebook
-RUN pip3 install --no-cache-dir notebook jupyterlab
+# 安装 code-server（避免直连 github）
+RUN wget -O /tmp/code-server.deb \
+https://ghproxy.com/https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server_${CODE_SERVER_VERSION}_amd64.deb && \
+    apt-get update && \
+    dpkg -i /tmp/code-server.deb || apt-get install -fy && \
+    rm -rf \
+        /tmp/*.deb \
+        /var/lib/apt/lists/*
 
-# 7. 创建非 root 用户并设置目录
-RUN useradd -m coder && mkdir -p /workspace && chown coder:coder /workspace
+# 安装 Jupyter
+RUN pip3 install --no-cache-dir \
+    notebook \
+    jupyterlab
+
+# 创建用户
+RUN useradd \
+    --create-home \
+    --shell /bin/bash \
+    coder && \
+    mkdir -p /workspace && \
+    chown -R coder:coder \
+    /workspace
+
+COPY start.sh /usr/local/bin/start.sh
+
+RUN chmod +x /usr/local/bin/start.sh
+
 USER coder
 WORKDIR /workspace
 
-# 8. 启动脚本
-COPY --chown=coder:coder start.sh /start.sh
-RUN chmod +x /start.sh
+EXPOSE 7001
+EXPOSE 7002
 
-# 9. 开放端口
-EXPOSE 7001 7002
+ENTRYPOINT ["/usr/bin/tini","--"]
 
-# 10. tini 管理进程
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/start.sh"]
+CMD ["/usr/local/bin/start.sh"]
